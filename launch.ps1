@@ -4,12 +4,13 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
 # Virtual environment path
-$VenvPath = Join-Path $ScriptDir ".venv"
+$VenvName = "visa_logger_venv"
+$VenvPath = Join-Path $env:USERPROFILE ".virtualenvs\$VenvName"
 
 # Create .venv if it doesn't exist
 if (-not (Test-Path $VenvPath)) {
-    Write-Host "Creating virtual environment in .venv..." -ForegroundColor Cyan
-    python -m venv .venv
+    Write-Host "Creating virtual environment at $VenvPath..." -ForegroundColor Cyan
+    python -m venv $VenvPath
     
     # Activate and install requirements
     Write-Host "Installing dependencies..." -ForegroundColor Cyan
@@ -17,7 +18,7 @@ if (-not (Test-Path $VenvPath)) {
     pip install -r requirements.txt
 } else {
     # Activate existing environment
-    Write-Host "Activating virtual environment..." -ForegroundColor Green
+    Write-Host "Activating virtual environment at $VenvPath..." -ForegroundColor Green
     . "$VenvPath\Scripts\Activate.ps1"
 }
 
