@@ -21,11 +21,11 @@ class VisaLoggerApp:
         self.settle_time = tk.DoubleVar(value=0.5) # Seconds
         self.psu_address = tk.StringVar()
         self.dmm_address = tk.StringVar()
-        self.output_file = tk.StringVar(value="measurements.csv")
-        self.psu_channel = tk.IntVar(value=1)
+        self.output_file = tk.StringVar(value="measurements")
+        self.psu_channel = tk.StringVar(value="1 - Yellow")
         
         # Tuning factor for time estimation (seconds per step for VISA comms overhead)
-        self.overhead_per_step = 0.5
+        self.overhead_per_step = 0.9
 
         self.is_running = False
         self.rm = pyvisa.ResourceManager()
@@ -45,7 +45,18 @@ class VisaLoggerApp:
         self.psu_combo.grid(row=0, column=1, padx=5, pady=2)
 
         ttk.Label(resource_frame, text="PSU Channel:").grid(row=1, column=0, sticky="w")
-        ttk.Spinbox(resource_frame, from_=1, to=3, textvariable=self.psu_channel, width=5).grid(row=1, column=1, sticky="w", padx=5)
+        
+        # Channel selection with color box
+        chan_frame = ttk.Frame(resource_frame)
+        chan_frame.grid(row=1, column=1, sticky="w", padx=5)
+        
+        self.chan_combo = ttk.Combobox(chan_frame, textvariable=self.psu_channel, width=15, state="readonly")
+        self.chan_combo['values'] = ("1 - Yellow", "2 - Green", "3 - Blue")
+        self.chan_combo.pack(side="left")
+        self.chan_combo.bind("<<ComboboxSelected>>", self.update_channel_color)
+        
+        self.chan_color_lbl = tk.Label(chan_frame, width=4, bg="#FFD700", relief="solid") # Default Yellow
+        self.chan_color_lbl.pack(side="left", padx=5)
 
         ttk.Label(resource_frame, text="DMM Address (EDU34450A):").grid(row=2, column=0, sticky="w")
         self.dmm_combo = ttk.Combobox(resource_frame, textvariable=self.dmm_address, width=40)
@@ -124,6 +135,15 @@ class VisaLoggerApp:
     def _add_param(self, parent, text, variable, row):
         ttk.Label(parent, text=text).grid(row=row, column=0, sticky="w", padx=5, pady=2)
         ttk.Entry(parent, textvariable=variable, width=15).grid(row=row, column=1, sticky="w", padx=5, pady=2)
+
+    def update_channel_color(self, event=None):
+        val = self.psu_channel.get()
+        if "1" in val:
+            self.chan_color_lbl.config(bg="#FFD700") # Yellow
+        elif "2" in val:
+            self.chan_color_lbl.config(bg="#32CD32") # Green
+        elif "3" in val:
+            self.chan_color_lbl.config(bg="#1E90FF") # Blue
 
     def calculate_estimates(self, *args):
         try:
@@ -219,7 +239,11 @@ class VisaLoggerApp:
             messagebox.showwarning("Warning", "Please select VISA addresses for both instruments.")
             return
 
-        output_path = self.output_file.get()
+        # Ensure .csv extension
+        output_path = self.output_file.get().strip()
+        if not output_path.lower().endswith(".csv"):
+            output_path += ".csv"
+
         if os.path.exists(output_path):
             if not messagebox.askyesno("Overwrite File?", f"The file '{output_path}' already exists.\nDo you want to overwrite it?"):
                 return
@@ -274,7 +298,10 @@ class VisaLoggerApp:
             step_v = self.step_voltage.get()
             settle_t = self.settle_time.get()
             current_lim = self.current_limit.get()
-            channel = self.psu_channel.get()
+            
+            # Parse Channel ID from string "1 - Yellow"
+            raw_channel = self.psu_channel.get()
+            channel = int(raw_channel.split(' - ')[0])
 
             # Generate voltage points
             # Handle direction (up or down)
@@ -296,8 +323,12 @@ class VisaLoggerApp:
             # DMM Setup (Keysight EDU34450A)
             self.active_dmm.write("CONF:VOLT:DC") 
 
-            # Create CSV
-            with open(self.output_file.get(), 'w', newline='') as csvfile:
+            # Create CSV (Ensure extension)
+            file_name = self.output_file.get().strip()
+            if not file_name.lower().endswith(".csv"):
+                file_name += ".csv"
+
+            with open(file_name, 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile)
                 writer.writerow(["Timestamp", "Set Voltage (V)", "Measured Voltage (V)"])
 
@@ -381,7 +412,7 @@ class VisaLoggerApp:
             d_mins, d_secs = divmod(int(float(elapsed)), 60)
             self.duration_label.config(text=f"Duration: {d_mins:02d}:{d_secs:02d}")
             
-            self.log(f"Set: {v_set:.3f}V | Meas: {v_read:.4f}V")
+            self.log(f"Set: {v_set:.3f}V | Meas: {v_read:.6f}V")
         except Exception as e:
             print(f"UI Update Error: {e}")
 
