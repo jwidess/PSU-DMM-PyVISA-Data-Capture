@@ -13,7 +13,7 @@ class VisaLoggerApp:
         self.root.title("Power Supply & DMM Controller")
         self.root.geometry("600x750")
 
-        # Variables
+        # Default variable values
         self.start_voltage = tk.DoubleVar(value=0.0)
         self.stop_voltage = tk.DoubleVar(value=5.0)
         self.step_voltage = tk.DoubleVar(value=0.5)
@@ -40,8 +40,8 @@ class VisaLoggerApp:
         resource_frame = ttk.LabelFrame(self.root, text="Instrument Connection", padding=10)
         resource_frame.pack(fill="x", padx=10, pady=5)
 
-        ttk.Label(resource_frame, text="PSU Address (E36313A):").grid(row=0, column=0, sticky="w")
-        self.psu_combo = ttk.Combobox(resource_frame, textvariable=self.psu_address, width=40)
+        ttk.Label(resource_frame, text="PSU Address:").grid(row=0, column=0, sticky="w")
+        self.psu_combo = ttk.Combobox(resource_frame, textvariable=self.psu_address, width=50)
         self.psu_combo.grid(row=0, column=1, padx=5, pady=2)
 
         ttk.Label(resource_frame, text="PSU Channel:").grid(row=1, column=0, sticky="w")
@@ -55,11 +55,11 @@ class VisaLoggerApp:
         self.chan_combo.pack(side="left")
         self.chan_combo.bind("<<ComboboxSelected>>", self.update_channel_color)
         
-        self.chan_color_lbl = tk.Label(chan_frame, width=4, bg="#FFD700", relief="solid") # Default Yellow
+        self.chan_color_lbl = tk.Label(chan_frame, width=4, bg="#FFD700", relief="solid")
         self.chan_color_lbl.pack(side="left", padx=5)
 
-        ttk.Label(resource_frame, text="DMM Address (EDU34450A):").grid(row=2, column=0, sticky="w")
-        self.dmm_combo = ttk.Combobox(resource_frame, textvariable=self.dmm_address, width=40)
+        ttk.Label(resource_frame, text="DMM Address:").grid(row=2, column=0, sticky="w")
+        self.dmm_combo = ttk.Combobox(resource_frame, textvariable=self.dmm_address, width=50)
         self.dmm_combo.grid(row=2, column=1, padx=5, pady=2)
         
         ttk.Button(resource_frame, text="Scan for Instruments", command=self.scan_resources).grid(row=3, column=1, sticky="e", pady=5)
@@ -89,7 +89,7 @@ class VisaLoggerApp:
         self.root.after(100, self.calculate_estimates)
 
         # Output Frame
-        file_frame = ttk.LabelFrame(self.root, text="Data Output", padding=10)
+        file_frame = ttk.LabelFrame(self.root, text="CSV File Output Name", padding=10)
         file_frame.pack(fill="x", padx=10, pady=5)
         
         ttk.Entry(file_frame, textvariable=self.output_file, width=50).pack(side="left", fill="x", expand=True)
@@ -166,7 +166,7 @@ class VisaLoggerApp:
             self.est_total_time_label.config(text=f"Est. Total Time: {mins:02d}:{secs:02d}")
             
         except (tk.TclError, ValueError):
-            # User is typing invalid stats
+            # User is typing invalid params
             self.est_steps_label.config(text="Total Steps: --")
             self.est_total_time_label.config(text="Est. Total Time: --:--")
 
@@ -189,9 +189,8 @@ class VisaLoggerApp:
             
             for res in raw_resources:
                 try:
-                    # Specific handling for Serial ports to avoid freezing if blocked
                     with self.rm.open_resource(res) as instr:
-                        instr.timeout = 1000  # Timeout
+                        instr.timeout = 1000
                         # Ask for IDN
                         idn = instr.query("*IDN?").strip()
                         # Clean up IDN string
@@ -207,7 +206,7 @@ class VisaLoggerApp:
                             friendly_name = f"{idn} - {res}"
                         friendly_list.append(friendly_name)
                 except Exception:
-                    # If can't open or query just list the resource ID
+                    # If can't open or query, just list the resource ID
                     friendly_list.append(res)
 
             # Update UI on main thread
@@ -224,9 +223,10 @@ class VisaLoggerApp:
         if resource_list:
             # Auto-select if we can guess based on model names
             for i, name in enumerate(resource_list):
-                if "E36313A" in name:
+                # Match general prefixes
+                if "E363" in name:
                     self.psu_combo.current(i)
-                if "EDU34450A" in name:
+                if "EDU344" in name:
                     self.dmm_combo.current(i)
 
     def browse_file(self):
