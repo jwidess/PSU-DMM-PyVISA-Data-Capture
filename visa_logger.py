@@ -193,6 +193,41 @@ class VisaLoggerApp:
         self.log_text.see("end")
         self.log_text.config(state="disabled")
 
+    def check_instrument_errors(self, instrument, instrument_name):
+        """Check for SCPI errors in the instrument's error queue."""
+        try:
+            try: # Wait for operation to complete before checking errors
+                instrument.query("*OPC?") # IEEE-488 standard command that guarantees that commands previously sent to the instrument have completed
+            except:
+                # If *OPC? not supported, small delay
+                time.sleep(0.05)
+            
+            while True:
+                error_response = instrument.query("SYST:ERR?").strip()
+                # +0,"No error" means no errors in queue
+                if error_response.startswith("+0,") or error_response.startswith("0,"):
+                    break  # No more errors
+                else:
+                    # Log the error
+                    self.root.after(0, self.log, f"⚠️ {instrument_name} Error: {error_response}")
+                    return False  # False = errors found
+            return True  # True = no errors
+        except Exception as e:
+            # If not support SYST:ERR?, just log and continue
+            self.root.after(0, self.log, f"Could not query {instrument_name} errors: {e}")
+            return True
+
+    def clear_instrument_errors(self, instrument, instrument_name):
+        """Clear all errors from the instrument's error queue without logging them."""
+        try:
+            # Clear error queue by reading until empty
+            while True:
+                error_response = instrument.query("SYST:ERR?").strip()
+                if error_response.startswith("+0,") or error_response.startswith("0,"):
+                    break
+        except Exception:
+            pass  # Ignore if not supported
+
     def scan_resources(self):
         self.log("Scanning for instruments (this may take a while)...")
         # Run scan in a separate thread to not freeze UI if timeouts occur
@@ -304,6 +339,10 @@ class VisaLoggerApp:
                 self.root.after(0, self.log, f"Connected to PSU: {psu_idn}")
                 self.root.after(0, self.log, f"Connected to DMM: {dmm_idn}")
                 
+                # Clear any old errors from previous operations
+                self.clear_instrument_errors(self.active_psu, "PSU")
+                self.clear_instrument_errors(self.active_dmm, "DMM")
+                
             except Exception as e:
                 self.root.after(0, self.log, f"Connection Failed: {e}")
                 raise e
@@ -336,6 +375,11 @@ class VisaLoggerApp:
             self.active_psu.write(f"VOLT {start_v}")
             self.active_psu.write(f"CURR {current_lim}")
             
+            # Check for PSU errors
+            if not self.check_instrument_errors(self.active_psu, "PSU"):
+                self.root.after(0, self.log, "⚠️ Aborting due to PSU error")
+                return
+            
             # DMM Setup (Keysight EDU34450A)
             # Default is SLOW 5.5 digit mode
             self.active_dmm.write("CONF:VOLT:DC")
@@ -346,7 +390,12 @@ class VisaLoggerApp:
                 self.root.after(0, self.log, "High-Z mode enabled (10GΩ for 100mV/1V ranges)")
             else:
                 self.active_dmm.write("VOLT:IMP:AUTO OFF")
-                self.root.after(0, self.log, "High-Z mode disabled (using standard impedance)") 
+                self.root.after(0, self.log, "High-Z mode disabled (using standard impedance)")
+            
+            # Check for DMM errors
+            if not self.check_instrument_errors(self.active_dmm, "DMM"):
+                self.root.after(0, self.log, "⚠️ Aborting due to DMM error")
+                return 
 
             # Create CSV (Ensure extension)
             file_name = self.output_file.get().strip()
@@ -369,6 +418,12 @@ class VisaLoggerApp:
 
                     # Set Voltage
                     self.active_psu.write(f"VOLT {v_set}")
+                    
+                    # Check for errors after setting voltage
+                    if not self.check_instrument_errors(self.active_psu, "PSU"):
+                        # Error occurred, stop the sweep
+                        self.root.after(0, self.log, f"⚠️ Stopping due to PSU error at {v_set:.3f}V")
+                        break
                     
                     # Settle
                     self.root.after(0, self.status_label.config, {"text": f"Status: Setting {v_set:.3f}V & Settling..."})
@@ -449,15 +504,14 @@ class VisaLoggerApp:
         if self.is_running:
             if messagebox.askokcancel("Quit", "Measurement is running. Do you want to stop and quit?"):
                 self.stop_process()
-                # Give a moment for thread stop signal
-                # this blocks main thread, but better than instant kill
+                # Give a moment for thread stop signal this blocks main thread, but better than instant kill
                 self._force_cleanup() # Try to force cleanup
                 self.root.destroy()
         else:
             self.root.destroy()
 
     def _force_cleanup(self):
-        # Last attempt to close instruments if app is closing
+        # Last attempt to close instruments if app is closing, dont want to leave PSU on
         if self.active_psu:
             try:
                 self.active_psu.write("OUTP OFF")
