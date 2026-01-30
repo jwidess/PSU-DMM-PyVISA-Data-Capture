@@ -53,3 +53,8 @@ The included PowerShell script, `launch.ps1`, handles environment setup and depe
 | 2026-01-27T14:53:18.774583 | 1.03            | 0.492258699          |
 | 2026-01-27T14:53:20.074599 | 1.04            | 0.500748839          |
 | 2026-01-27T14:53:21.373732 | 1.05            | 0.509241539          |
+
+## To-do
+ - Add support for more instruments, currently tightly coupled to Keysight models listed above.
+ - Support for different measurement types (current, resistance, etc.)
+ - More granular step sizes over specified ranges (logs, custom lists, etc.)
