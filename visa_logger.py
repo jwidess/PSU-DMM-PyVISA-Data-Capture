@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from idlelib.tooltip import Hovertip
 import pyvisa
 import time
 import threading
@@ -23,6 +24,7 @@ class VisaLoggerApp:
         self.dmm_address = tk.StringVar()
         self.output_file = tk.StringVar(value="measurements")
         self.psu_channel = tk.StringVar(value="1 - Yellow")
+        self.high_impedance_mode = tk.BooleanVar(value=True)
         
         # Tuning factor for time estimation (seconds per step for VISA comms overhead)
         self.overhead_per_step = 0.9
@@ -62,7 +64,21 @@ class VisaLoggerApp:
         self.dmm_combo = ttk.Combobox(resource_frame, textvariable=self.dmm_address, width=50)
         self.dmm_combo.grid(row=2, column=1, padx=5, pady=2)
         
-        ttk.Button(resource_frame, text="Scan for Instruments", command=self.scan_resources).grid(row=3, column=1, sticky="e", pady=5)
+        # High-Z mode checkbox
+        self.high_imp_check = ttk.Checkbutton(
+            resource_frame, 
+            text="Enable DMM Auto High-Z Mode",
+            variable=self.high_impedance_mode
+        )
+        self.high_imp_check.grid(row=3, column=0, columnspan=2, sticky="w", pady=5)
+        
+        # Add tooltip with detailed information
+        Hovertip(self.high_imp_check, 
+                 "When enabled, the DMM automatically uses 10GΩ input impedance on 100mV and 1V ranges\n"
+                 "and 10MΩ input impedance for all other ranges. When disabled, the DMM uses a fixed 10MΩ\n"
+                 "input impedance for all ranges.")
+        
+        ttk.Button(resource_frame, text="Scan for Instruments", command=self.scan_resources).grid(row=4, column=1, sticky="e", pady=5)
 
         # Parameters Frame
         param_frame = ttk.LabelFrame(self.root, text="Measurement Parameters", padding=10)
@@ -321,7 +337,16 @@ class VisaLoggerApp:
             self.active_psu.write(f"CURR {current_lim}")
             
             # DMM Setup (Keysight EDU34450A)
-            self.active_dmm.write("CONF:VOLT:DC") 
+            # Default is SLOW 5.5 digit mode
+            self.active_dmm.write("CONF:VOLT:DC")
+            
+            # Configure High-Z mode
+            if self.high_impedance_mode.get():
+                self.active_dmm.write("VOLT:IMP:AUTO ON")
+                self.root.after(0, self.log, "High-Z mode enabled (10GΩ for 100mV/1V ranges)")
+            else:
+                self.active_dmm.write("VOLT:IMP:AUTO OFF")
+                self.root.after(0, self.log, "High-Z mode disabled (using standard impedance)") 
 
             # Create CSV (Ensure extension)
             file_name = self.output_file.get().strip()
@@ -357,7 +382,6 @@ class VisaLoggerApp:
                     except:
                         v_read = float('nan')
 
-                    # Save
                     writer.writerow([datetime.now().isoformat(), v_set, v_read])
 
                     # Update UI
